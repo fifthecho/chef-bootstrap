@@ -1,0 +1,61 @@
+bash -c '
+<%= "export http_proxy=\"#{knife_config[:bootstrap_proxy]}\"" if knife_config[:bootstrap_proxy] -%>
+
+if [ -h /usr/bin/chef-client ]
+then
+	rm -f /usr/bin/chef*
+fi
+
+source /etc/profile.d/rvm.sh
+rvm use 1.9.3 --default
+
+gem update --no-rdoc --no-ri
+gem install ohai --no-rdoc --no-ri
+gem install chef --no-rdoc --no-ri <%= bootstrap_version_string %>
+if [ -h /etc/redhat-release ]
+then
+	service ntpdate stop 
+	service ntpd stop
+	ntpdate pool.ntp.org
+fi
+
+if [ -f /usr/bin/chef-client ]
+then
+	echo "chef-client installed"
+else
+	source /etc/profile.d/rvm.sh
+	ln -s `which chef-client` /usr/bin/chef-client
+fi
+mkdir -p /etc/chef
+
+(
+cat <<'EOP'
+<%= validation_key %>
+EOP
+) > /tmp/validation.pem
+awk NF /tmp/validation.pem > /etc/chef/validation.pem
+rm /tmp/validation.pem
+
+<% if @chef_config[:encrypted_data_bag_secret] -%>
+(
+cat <<'EOP'
+<%= encrypted_data_bag_secret %>
+EOP
+) > /tmp/encrypted_data_bag_secret
+awk NF /tmp/encrypted_data_bag_secret > /etc/chef/encrypted_data_bag_secret
+rm /tmp/encrypted_data_bag_secret
+<% end -%>
+
+(
+cat <<'EOP'
+<%= config_content %>
+EOP
+) > /etc/chef/client.rb
+
+(
+cat <<'EOP'
+<%= { "run_list" => @run_list }.to_json %>
+EOP
+) > /etc/chef/first-boot.json
+
+<%= start_chef %>'
